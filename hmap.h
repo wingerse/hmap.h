@@ -25,10 +25,11 @@
  * put        : Puts the key, returning a pointer to the value. Allocates new entry if required
  * put_entry  : Puts an entry into the hashmap if it doesn't exist. This entry has to come from extract method.
  * get        : Gets a pointer to the value associated with the key; returns NULL if it doesn't exist.
- * extract    : Removes and returns the entry associated with the key. The entry has to be `free`d yourself. 
- *              Destroying the key and value also is now your responsibility.
+ * extract    : Removes and returns the entry associated with the key; returns NULL if it doesn't exist.
+ *              The entry has to be `free`d yourself. Destroying the key and value also is now your responsibility.
  *              The main use case is changing they key without reallocation by calling put_entry after changing it.  
  * remove     : Removes the entry associated with the key from the map, freeing it and calling destructors for key and value.
+ *              Returns true if removed, false if it doesn't exist.
  * destroy    : Destroys the map by freeing memory, and calling destructors of keys and values.
  * 
  * Example
