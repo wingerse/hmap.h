@@ -3,8 +3,8 @@
  * Usage
  * =====
  * HMAP_DECLARE(K, V) 
- *     Defines structures hmap_K_V and hmap_K_V_entry, and declares the functions
- *     If K or V is a pointer, then it has to be typedef'd
+ *     Defines structures hmap_K_V and hmap_K_V_entry, and declares the functions.
+ *     If K or V is a pointer, then it has to be typedef'd.
  * HMAP_DEFINE(K, V, hash_func, eq_func) 
  *     Defines the functions. 
  *     hash_func: Must have signature: uint32_t hash_func(const K *)
@@ -18,24 +18,38 @@
  * 
  * Functions
  * =========
- * Prefix of hmap_K_V_ followed by:
- * init_custom: Initiates the hashmap with given parameters and initial capacity is (rounded to next power of 2). 
- *              Destructors can be NULL in which case they are ignored.
- * init       : Init_custom with default parameters
- * put        : Puts the key, returning a pointer to the value. Allocates new entry if required
- * put_entry  : Puts an entry into the hashmap if it doesn't exist. This entry has to come from extract method.
- * get        : Gets a pointer to the value associated with the key; returns NULL if it doesn't exist.
- * extract    : Removes and returns the entry associated with the key; returns NULL if it doesn't exist.
- *              The entry has to be `free`d yourself. Destroying the key and value also is now your responsibility.
- *              The main use case is changing they key without reallocation by calling put_entry after changing it.  
- * remove     : Removes the entry associated with the key from the map, freeing it and calling destructors for key and value.
- *              Returns true if removed, false if it doesn't exist.
- * destroy    : Destroys the map by freeing memory, and calling destructors of keys and values.
+ * void hmap_K_V_init_custom(hmap_K_V *h, float load_factor, uint32_t initial_capacity, void (*key_destructor)(K *key), void (*value_destructor)(V *value)): 
+ *     Initiates the hashmap with given parameters. initial capacity is rounded to next power of 2. 
+ *     Destructors can be NULL in which case they are ignored.
+ *
+ * void hmap_K_V_init(hmap_K_V *h, void (*key_destructor)(K *key), void (*value_destructor)(V *value)): 
+ *     init_custom with default parameters + destructors forwarded.
+ *
+ * V *hmap_K_V_put(hmap_K_V *h, const K *key): 
+ *     Puts the key, returning a pointer to the value. Allocates new entry if required.
+ *
+ * void hmap_K_V_put_entry(hmap_K_V *h, hmap_K_V_entry *entry):
+ *     Puts an entry into the hashmap. If it already exists, the previous entry is destroyed.
+ *
+ * V *hmap_K_V_get(const hmap_K_V *h, const K *key): 
+ *     Gets a pointer to the value associated with the key; returns NULL if it doesn't exist.
+ *
+ * hmap_K_V_entry *hmap_K_V_extract(hmap_K_V *h, const K *key): 
+ *     Removes and returns the entry associated with the key; returns NULL if it doesn't exist.
+ *     The entry has to be `free`d yourself. Destroying the key and value also is now your responsibility.
+ *     The main use case is changing the key without reallocation - extract, change and then call put_entry.  
+ *
+ * bool hmap_K_V_remove(hmap_K_V *h, const K *key): 
+ *     Removes the entry associated with the key from the map, freeing it and calling destructors for key and value.
+ *     Returns true if removed, false if it doesn't exist.
+ *
+ * void hmap_K_V_destroy(hmap_K_V *h): 
+ *     Destroys the map by freeing memory, and calling destructors of keys and values.
  * 
  * Example
  * =======
  * HMAP_DECLARE(int, int)
- * HMAP_DEFINE(int, int)
+ * HMAP_DEFINE(int, int, hash_func, eq_func) // hash_func can be identity function. eq_func can use ==
  * 
  * hmap_int_int h;
  * hmap_int_int_init(&h, NULL, NULL);
@@ -183,16 +197,25 @@ void hmap_##K##_##V##_put_entry(hmap_##K##_##V *h, hmap_##K##_##V##_entry *entry
     hmap_##K##_##V##_resize_if_required(h);\
     uint32_t hash = hmap_##K##_##V##_hash(&entry->key);\
     uint32_t index = hash & (h->cap - 1);\
-    hmap_##K##_##V##_entry **e = &h->buckets[index];\
-    for (; *e != NULL; e = &(*e)->next) {\
-        if ((*e)->hash == hash && eq_func(&(*e)->key, &entry->key)) {\
-            return;\
+    hmap_##K##_##V##_entry *e = h->buckets[index];\
+	hmap_##K##_##V##_entry **prev_next = &h->buckets[index];\
+	hmap_##K##_##V##_entry *next = NULL;\
+	bool destroy = false;\
+    for (; e != NULL; prev_next = &e->next, e = e->next) {\
+        if (e->hash == hash && eq_func(&e->key, &entry->key)) {\
+			next = e->next;\
+			if (h->key_destructor != NULL) h->key_destructor(&e->key);\
+			if (h->value_destructor != NULL) h->value_destructor(&e->value);\
+			free(e);\
+			destroy = true;\
+			break;\
         }\
     }\
     entry->hash = hash;\
-    entry->next = NULL;\
-    *e = entry;\
-    h->len++;\
+    entry->next = next;\
+    *prev_next = entry;\
+	if (!destroy)\
+		h->len++;\
     return;\
 }\
 \
